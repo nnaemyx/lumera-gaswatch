@@ -32,8 +32,8 @@ export default function BalanceCard() {
               <Coins size={36} className="text-white" />
             </div>
             <div>
-              <p className="text-white/90 text-sm font-semibold uppercase tracking-widest mb-2" style={{ fontFamily: 'var(--font-outfit)' }}>Total Balance</p>
-              <h2 className="text-6xl font-black mt-1 tracking-tight text-white" style={{ fontFamily: 'var(--font-outfit)' }}>
+              <p className="text-white/90 text-sm font-semibold uppercase tracking-widest mb-2" style={{ fontFamily: 'var(--font-montserrat)' }}>Total Balance</p>
+              <h2 className="text-6xl font-extrabold mt-1 tracking-tight text-white" style={{ fontFamily: 'var(--font-montserrat)' }}>
                 {isConnected ? formattedBalance : "0.000000"}
               </h2>
             </div>
@@ -52,8 +52,8 @@ export default function BalanceCard() {
           )}
         </div>
         <div className="flex items-center justify-between pt-6 border-t border-white/30">
-          <span className="text-white/90 text-sm font-bold uppercase tracking-widest" style={{ fontFamily: 'var(--font-outfit)' }}>LUME</span>
-          <span className="text-sm bg-white/20 backdrop-blur-md px-5 py-2 rounded-full font-bold border-2 border-white/30 text-white shadow-lg" style={{ fontFamily: 'var(--font-outfit)' }}>
+          <span className="text-white/90 text-sm font-bold uppercase tracking-widest" style={{ fontFamily: 'var(--font-montserrat)' }}>LUME</span>
+          <span className="text-sm bg-white/20 backdrop-blur-md px-5 py-2 rounded-full font-bold border-2 border-white/30 text-white shadow-lg" style={{ fontFamily: 'var(--font-montserrat)' }}>
             Lumera Mainnet
           </span>
         </div>
