@@ -1,40 +1,44 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0d1117;
+  --background: #0a0e1a;
   --foreground: #f8fafc;
-  --primary: #10b981;
-  --primary-dark: #059669;
-  --accent: #34d399;
-  --accent-dark: #10b981;
-  --secondary: #6ee7b7;
-  --secondary-dark: #34d399;
-  --tertiary: #ef4444;
-  --tertiary-dark: #dc2626;
-  --surface: #161b22;
-  --surface-elevated: #1f2937;
-  --border: #30363d;
-  --border-light: #3d444d;
+  --primary: #3b82f6;
+  --primary-dark: #2563eb;
+  --accent: #60a5fa;
+  --accent-dark: #3b82f6;
+  --secondary: #93c5fd;
+  --secondary-dark: #60a5fa;
+  --tertiary: #6366f1;
+  --tertiary-dark: #4f46e5;
+  --surface: #111827;
+  --surface-elevated: #1e293b;
+  --border: #334155;
+  --border-light: #475569;
   --success: #10b981;
   --warning: #f59e0b;
   --error: #ef4444;
-  --profit: #10b981;
-  --loss: #ef4444;
+  --heatmap-0: #1e293b;
+  --heatmap-1: #1e3a8a;
+  --heatmap-2: #1e40af;
+  --heatmap-3: #2563eb;
+  --heatmap-4: #3b82f6;
+  --heatmap-5: #60a5fa;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-dm-sans);
-  --font-heading: var(--font-outfit);
-  --font-mono: var(--font-ibm-plex-mono);
+  --font-sans: var(--font-inter);
+  --font-heading: var(--font-space-grotesk);
+  --font-mono: var(--font-source-code-pro);
 }
 
 body {
-  background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #0d1117 100%);
+  background: linear-gradient(135deg, #0a0e1a 0%, #111827 50%, #0a0e1a 100%);
   background-attachment: fixed;
   color: var(--foreground);
-  font-family: var(--font-dm-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -62,11 +66,11 @@ body {
 
 /* Glow effects */
 .glow-primary {
-  box-shadow: 0 0 30px rgba(16, 185, 129, 0.7), 0 0 60px rgba(16, 185, 129, 0.5), 0 0 90px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 0 30px rgba(59, 130, 246, 0.7), 0 0 60px rgba(59, 130, 246, 0.5), 0 0 90px rgba(59, 130, 246, 0.3);
 }
 
 .glow-accent {
-  box-shadow: 0 0 30px rgba(52, 211, 153, 0.7), 0 0 60px rgba(52, 211, 153, 0.5), 0 0 90px rgba(52, 211, 153, 0.3);
+  box-shadow: 0 0 30px rgba(96, 165, 250, 0.7), 0 0 60px rgba(96, 165, 250, 0.5), 0 0 90px rgba(96, 165, 250, 0.3);
 }
 
 .glow-success {
@@ -74,13 +78,5 @@ body {
 }
 
 .glow-danger {
-  box-shadow: 0 0 30px rgba(239, 68, 68, 0.7), 0 0 60px rgba(239, 68, 68, 0.5), 0 0 90px rgba(239, 68, 68, 0.3);
-}
-
-.glow-profit {
-  box-shadow: 0 0 30px rgba(16, 185, 129, 0.7), 0 0 60px rgba(16, 185, 129, 0.5), 0 0 90px rgba(16, 185, 129, 0.3);
-}
-
-.glow-loss {
   box-shadow: 0 0 30px rgba(239, 68, 68, 0.7), 0 0 60px rgba(239, 68, 68, 0.5), 0 0 90px rgba(239, 68, 68, 0.3);
 }

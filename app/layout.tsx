@@ -1,33 +1,33 @@
 import type { Metadata } from "next";
-import { Raleway, Nunito, Fira_Code, Outfit, DM_Sans, IBM_Plex_Mono } from "next/font/google";
+import { Space_Grotesk, Inter, Source_Code_Pro } from "next/font/google";
 import "./globals.css";
 import { WalletProvider } from "@/contexts/WalletContext";
 
-const outfit = Outfit({
-  variable: "--font-outfit",
+const spaceGrotesk = Space_Grotesk({
+  variable: "--font-space-grotesk",
   subsets: ["latin"],
   display: "swap",
-  weight: ["400", "500", "600", "700", "800", "900"],
+  weight: ["400", "500", "600", "700"],
 });
 
-const dmSans = DM_Sans({
-  variable: "--font-dm-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
   display: "swap",
-  weight: ["300", "400", "500", "600", "700", "800", "900"],
+  weight: ["400", "500", "600", "700", "800"],
 });
 
-const ibmPlexMono = IBM_Plex_Mono({
-  variable: "--font-ibm-plex-mono",
+const sourceCodePro = Source_Code_Pro({
+  variable: "--font-source-code-pro",
   subsets: ["latin"],
   display: "swap",
   weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
-  title: "WalletWatch - Multi-Wallet Watchlist",
+  title: "ActivityMap - Wallet Activity Heatmap",
   description:
-    "Track multiple wallet addresses in one dashboard. Monitor balances, transactions, and activity across all your watched wallets on Lumera Testnet.",
+    "Visualize wallet transaction activity with a GitHub-style heatmap calendar. See your transaction patterns and activity intensity over time on Lumera Testnet.",
 };
 
 export default function RootLayout({
@@ -38,7 +38,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${outfit.variable} ${dmSans.variable} ${ibmPlexMono.variable} antialiased`}
+        className={`${spaceGrotesk.variable} ${inter.variable} ${sourceCodePro.variable} antialiased`}
       >
         <WalletProvider>{children}</WalletProvider>
       </body>
