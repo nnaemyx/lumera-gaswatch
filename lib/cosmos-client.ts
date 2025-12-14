@@ -3,15 +3,74 @@ import { OfflineSigner } from "@cosmjs/proto-signing";
 import { LUMERA_CONFIG, GAS_PRICE } from "./lumera-config";
 import { QueryClient, setupStakingExtension } from "@cosmjs/stargate";
 
-export const createQueryClient = async () => {
+export const createQueryClient = async (timeout = 15000) => {
   try {
-    return await StargateClient.connect(LUMERA_CONFIG.rpc);
+    // First, test if the RPC endpoint is reachable via HTTP
+    try {
+      const testResponse = await fetch(`${LUMERA_CONFIG.rpc.replace('https://', 'https://').replace('http://', 'http://')}/status`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+        signal: AbortSignal.timeout(5000), // 5 second timeout for test
+      });
+      
+      if (!testResponse.ok) {
+        console.warn(`RPC endpoint returned status ${testResponse.status}`);
+      }
+    } catch (testError: any) {
+      console.warn("RPC endpoint test failed:", testError);
+      // Continue anyway, as the test might fail due to CORS but the actual connection might work
+    }
+
+    // Create a promise that rejects after timeout
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("Connection timeout")), timeout);
+    });
+
+    // Race between connection and timeout
+    const connectionPromise = StargateClient.connect(LUMERA_CONFIG.rpc);
+    
+    return await Promise.race([connectionPromise, timeoutPromise]) as Awaited<ReturnType<typeof StargateClient.connect>>;
   } catch (error: any) {
     console.error("Failed to connect to RPC:", error);
-    if (error.message?.includes("fetch") || error.message?.includes("network")) {
-      throw new Error("Network error: Unable to connect to Lumera Testnet. Please check your internet connection and try again.");
+    console.error("Error details:", {
+      message: error.message,
+      name: error.name,
+      stack: error.stack,
+      cause: error.cause,
+    });
+    
+    // Check if it's a timeout error
+    if (error.message?.includes("timeout") || error.message?.includes("Timeout") || error.name === "AbortError") {
+      throw new Error("Connection timeout: The Lumera Testnet RPC endpoint took too long to respond. The network may be experiencing issues or the endpoint may be down. Please try again later.");
     }
-    throw new Error(`Failed to connect to Lumera Testnet: ${error.message || "Unknown error"}`);
+    
+    // Check for network/fetch errors (most common in browsers)
+    if (error.message?.includes("fetch") || 
+        error.message?.includes("network") || 
+        error.message?.includes("Failed to fetch") ||
+        error.name === "TypeError" ||
+        (error.message && typeof error.message === 'string' && error.message.toLowerCase().includes('network'))) {
+      
+      const errorMsg = `Network error: Unable to connect to Lumera Testnet RPC endpoint (${LUMERA_CONFIG.rpc}). ` +
+        `This could be due to:\n` +
+        `- CORS restrictions (the RPC endpoint may not allow browser connections)\n` +
+        `- Network connectivity issues\n` +
+        `- The RPC endpoint being temporarily unavailable\n\n` +
+        `Please check your internet connection and try again. If the issue persists, the RPC endpoint may need to be configured to allow CORS requests from browsers.`;
+      
+      throw new Error(errorMsg);
+    }
+    
+    // Check for CORS errors
+    if (error.message?.includes("CORS") || error.message?.includes("cors") || error.message?.includes("Access-Control")) {
+      throw new Error("CORS error: The Lumera Testnet RPC endpoint does not allow browser connections due to CORS restrictions. Please contact the network administrators to enable CORS for browser-based applications.");
+    }
+    
+    // Generic error with more context
+    const errorDetails = error.message || error.toString() || "Unknown error";
+    throw new Error(`Failed to connect to Lumera Testnet (${LUMERA_CONFIG.rpc}): ${errorDetails}`);
   }
 };
 
@@ -27,12 +86,35 @@ export const createSigningClient = async (signer: OfflineSigner) => {
 
 export const getBalance = async (address: string) => {
   try {
-    const client = await createQueryClient();
-    const balance = await client.getBalance(
-      address,
-      LUMERA_CONFIG.stakeCurrency.coinMinimalDenom
+    // Use REST API instead of RPC to avoid CORS issues
+    const response = await fetch(
+      `${LUMERA_CONFIG.rest}/cosmos/bank/v1beta1/balances/${address}?pagination.limit=1000`
     );
-    return balance;
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    const balances = data.balances || [];
+    
+    // Find the stake currency balance
+    const stakeBalance = balances.find(
+      (b: any) => b.denom === LUMERA_CONFIG.stakeCurrency.coinMinimalDenom
+    );
+    
+    if (stakeBalance) {
+      return {
+        denom: stakeBalance.denom,
+        amount: stakeBalance.amount,
+      };
+    }
+    
+    // Return zero balance if not found
+    return {
+      denom: LUMERA_CONFIG.stakeCurrency.coinMinimalDenom,
+      amount: "0",
+    };
   } catch (error: any) {
     console.error("Error fetching balance:", error);
     // Return zero balance if there's an error (wallet might be new)
@@ -43,11 +125,25 @@ export const getBalance = async (address: string) => {
   }
 };
 
-export const getAllBalances = async (address: string) => {
+export const getAllBalances = async (address: string): Promise<Array<{ denom: string; amount: string }>> => {
   try {
-    const client = await createQueryClient();
-    const balances = await client.getAllBalances(address);
-    return balances;
+    // Use REST API instead of RPC to avoid CORS issues
+    const response = await fetch(
+      `${LUMERA_CONFIG.rest}/cosmos/bank/v1beta1/balances/${address}?pagination.limit=1000`
+    );
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    const balances = data.balances || [];
+    
+    // Convert to the expected format
+    return balances.map((b: any) => ({
+      denom: b.denom,
+      amount: b.amount,
+    }));
   } catch (error: any) {
     console.error("Error fetching all balances:", error);
     // Return empty array if there's an error
@@ -425,106 +521,133 @@ export interface BlockInfo {
 
 export const getLatestBlocks = async (limit: number = 20): Promise<BlockInfo[]> => {
   try {
-    const client = await createQueryClient();
-    const latestHeight = await client.getHeight();
+    // Use REST API instead of RPC to avoid CORS issues
+    // First get the latest block to know the current height
+    const latestResponse = await fetch(`${LUMERA_CONFIG.rest}/cosmos/base/tendermint/v1beta1/blocks/latest`);
+    if (!latestResponse.ok) {
+      throw new Error(`Failed to fetch latest block: ${latestResponse.statusText}`);
+    }
+    
+    const latestData = await latestResponse.json();
+    const latestHeight = parseInt(latestData.block.header.height || "0");
+    
+    if (latestHeight === 0) {
+      return [];
+    }
     
     const blocks: BlockInfo[] = [];
     const startHeight = Math.max(1, latestHeight - limit + 1);
     
-    for (let height = latestHeight; height >= startHeight && height > 0; height--) {
-      try {
-        const block = await client.getBlock(height);
-        if (block) {
-          blocks.push({
-            height: height.toString(),
-            hash: block.id || "",
-            time: block.header.time ? new Date(block.header.time).toISOString() : new Date().toISOString(),
-            numTxs: block.txs.length,
-            proposer: undefined, // Proposer address not available in BlockHeader type
-            transactions: block.txs.map((tx, idx) => {
-              // Try to parse transaction
-              try {
-                const txHash = Buffer.from(tx).toString('hex').slice(0, 64);
-                return {
-                  hash: txHash,
-                  height: height.toString(),
-                  type: "Unknown",
-                  timestamp: block.header.time ? new Date(block.header.time).toISOString() : new Date().toISOString(),
-                  status: "success" as const,
-                };
-              } catch {
-                return {
-                  hash: `tx-${height}-${idx}`,
-                  height: height.toString(),
-                  type: "Unknown",
-                  timestamp: block.header.time ? new Date(block.header.time).toISOString() : new Date().toISOString(),
-                  status: "success" as const,
-                };
-              }
-            }),
-          });
-        }
-      } catch (err) {
-        console.error(`Error fetching block ${height}:`, err);
-        // Continue with next block
+    // Fetch blocks in parallel (with some batching to avoid overwhelming the API)
+    const fetchPromises: Promise<void>[] = [];
+    const batchSize = 5;
+    
+    for (let height = latestHeight; height >= startHeight && height > 0; height -= batchSize) {
+      const batch = [];
+      for (let i = 0; i < batchSize && (height - i) >= startHeight; i++) {
+        batch.push(height - i);
       }
+      
+      const batchPromise = Promise.all(
+        batch.map(async (h) => {
+          try {
+            const response = await fetch(`${LUMERA_CONFIG.rest}/cosmos/base/tendermint/v1beta1/blocks/${h}`);
+            if (response.ok) {
+              const data = await response.json();
+              const block = data.block;
+              const txs = block.data?.txs || [];
+              
+              blocks.push({
+                height: block.header.height || h.toString(),
+                hash: block.header.last_commit_hash || block.header.hash || "",
+                time: block.header.time || new Date().toISOString(),
+                numTxs: txs.length,
+                proposer: block.header.proposer_address,
+                transactions: txs.map((tx: string, idx: number) => {
+                  try {
+                    // Try to decode base64 transaction hash
+                    const txBytes = Buffer.from(tx, 'base64');
+                    const txHash = txBytes.toString('hex').slice(0, 64);
+                    return {
+                      hash: txHash,
+                      height: block.header.height || h.toString(),
+                      type: "Unknown",
+                      timestamp: block.header.time || new Date().toISOString(),
+                      status: "success" as const,
+                    };
+                  } catch {
+                    return {
+                      hash: `tx-${h}-${idx}`,
+                      height: block.header.height || h.toString(),
+                      type: "Unknown",
+                      timestamp: block.header.time || new Date().toISOString(),
+                      status: "success" as const,
+                    };
+                  }
+                }),
+              });
+            }
+          } catch (err) {
+            console.error(`Error fetching block ${h}:`, err);
+          }
+        })
+      );
+      
+      fetchPromises.push(batchPromise as Promise<void>);
     }
+    
+    await Promise.all(fetchPromises);
+    
+    // Sort by height descending
+    blocks.sort((a, b) => parseInt(b.height) - parseInt(a.height));
     
     return blocks;
   } catch (error: any) {
     console.error("Error fetching latest blocks:", error);
-    // Try REST API as fallback
-    try {
-      const response = await fetch(`${LUMERA_CONFIG.rest}/cosmos/base/tendermint/v1beta1/blocks/latest`);
-      if (response.ok) {
-        const data = await response.json();
-        const block = data.block;
-        return [{
-          height: block.header.height || "0",
-          hash: block.header.last_commit_hash || "",
-          time: block.header.time || new Date().toISOString(),
-          numTxs: block.data?.txs?.length || 0,
-          proposer: block.header.proposer_address,
-        }];
-      }
-    } catch (restError) {
-      console.error("REST API fallback also failed:", restError);
-    }
     return [];
   }
 };
 
 export const getBlockByHeight = async (height: number): Promise<BlockInfo | null> => {
   try {
-    const client = await createQueryClient();
-    const block = await client.getBlock(height);
+    // Use REST API instead of RPC to avoid CORS issues
+    const response = await fetch(`${LUMERA_CONFIG.rest}/cosmos/base/tendermint/v1beta1/blocks/${height}`);
     
-    if (!block) {
-      return null;
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null;
+      }
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
     
+    const data = await response.json();
+    const block = data.block;
+    const txs = block.data?.txs || [];
+    
     return {
-      height: height.toString(),
-      hash: block.id || "",
-      time: block.header.time ? new Date(block.header.time).toISOString() : new Date().toISOString(),
-      numTxs: block.txs.length,
-      proposer: undefined, // Proposer address not available in BlockHeader type
-      transactions: block.txs.map((tx, idx) => {
+      height: block.header.height || height.toString(),
+      hash: block.header.last_commit_hash || block.header.hash || "",
+      time: block.header.time || new Date().toISOString(),
+      numTxs: txs.length,
+      proposer: block.header.proposer_address,
+      transactions: txs.map((tx: string, idx: number) => {
         try {
-          const txHash = Buffer.from(tx).toString('hex').slice(0, 64);
+          // Try to decode base64 transaction hash
+          const txBytes = Buffer.from(tx, 'base64');
+          const txHash = txBytes.toString('hex').slice(0, 64);
           return {
             hash: txHash,
-            height: height.toString(),
+            height: block.header.height || height.toString(),
             type: "Unknown",
-            timestamp: block.header.time ? new Date(block.header.time).toISOString() : new Date().toISOString(),
+            timestamp: block.header.time || new Date().toISOString(),
             status: "success" as const,
           };
         } catch {
           return {
             hash: `tx-${height}-${idx}`,
-            height: height.toString(),
+            height: block.header.height || height.toString(),
             type: "Unknown",
-            timestamp: block.header.time ? new Date(block.header.time).toISOString() : new Date().toISOString(),
+            timestamp: block.header.time || new Date().toISOString(),
             status: "success" as const,
           };
         }
@@ -532,43 +655,23 @@ export const getBlockByHeight = async (height: number): Promise<BlockInfo | null
     };
   } catch (error: any) {
     console.error(`Error fetching block ${height}:`, error);
-    // Try REST API as fallback
-    try {
-      const response = await fetch(`${LUMERA_CONFIG.rest}/cosmos/base/tendermint/v1beta1/blocks/${height}`);
-      if (response.ok) {
-        const data = await response.json();
-        const block = data.block;
-        return {
-          height: block.header.height || height.toString(),
-          hash: block.header.last_commit_hash || "",
-          time: block.header.time || new Date().toISOString(),
-          numTxs: block.data?.txs?.length || 0,
-          proposer: block.header.proposer_address,
-        };
-      }
-    } catch (restError) {
-      console.error("REST API fallback also failed:", restError);
-    }
     return null;
   }
 };
 
 export const getLatestBlockHeight = async (): Promise<number> => {
   try {
-    const client = await createQueryClient();
-    return await client.getHeight();
+    // Use REST API instead of RPC to avoid CORS issues
+    const response = await fetch(`${LUMERA_CONFIG.rest}/cosmos/base/tendermint/v1beta1/blocks/latest`);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return parseInt(data.block.header.height || "0");
   } catch (error: any) {
     console.error("Error fetching latest block height:", error);
-    // Try REST API as fallback
-    try {
-      const response = await fetch(`${LUMERA_CONFIG.rest}/cosmos/base/tendermint/v1beta1/blocks/latest`);
-      if (response.ok) {
-        const data = await response.json();
-        return parseInt(data.block.header.height || "0");
-      }
-    } catch (restError) {
-      console.error("REST API fallback also failed:", restError);
-    }
     return 0;
   }
 };
@@ -658,6 +761,142 @@ export const getTransactionByHash = async (txHash: string): Promise<TransactionD
     };
   } catch (error: any) {
     console.error("Error fetching transaction:", error);
+    throw error;
+  }
+};
+
+export interface NetworkStats {
+  latestHeight: number;
+  blockTime: number; // Average block time in seconds
+  tps: number; // Transactions per second
+  avgGasUsed: number;
+  avgGasWanted: number;
+  totalValidators: number;
+  activeValidators: number;
+  totalTransactions: number;
+  networkStatus: "healthy" | "degraded" | "down";
+}
+
+export const getNetworkStats = async (): Promise<NetworkStats> => {
+  try {
+    // Use REST API instead of RPC to avoid CORS issues
+    // Get latest block height
+    const latestHeight = await getLatestBlockHeight();
+    
+    if (latestHeight === 0) {
+      throw new Error("Unable to fetch latest block height");
+    }
+    
+    // Get recent blocks to calculate stats
+    const blockCount = 10;
+    const startHeight = Math.max(1, latestHeight - blockCount + 1);
+    
+    const blockPromises: Promise<any>[] = [];
+    for (let height = latestHeight; height >= startHeight && height > 0; height--) {
+      blockPromises.push(
+        fetch(`${LUMERA_CONFIG.rest}/cosmos/base/tendermint/v1beta1/blocks/${height}`)
+          .then(res => res.ok ? res.json() : null)
+          .then(data => data ? data.block : null)
+          .catch(() => null)
+      );
+    }
+    
+    const blockResults = await Promise.all(blockPromises);
+    const blocks = blockResults.filter(b => b !== null);
+    
+    // Calculate block time (average time between blocks)
+    let blockTime = 0;
+    if (blocks.length > 1) {
+      const times = blocks
+        .map(b => b.header?.time ? new Date(b.header.time).getTime() : 0)
+        .filter(t => t > 0)
+        .sort((a, b) => b - a); // Sort descending
+      
+      if (times.length > 1) {
+        const intervals: number[] = [];
+        for (let i = 1; i < times.length; i++) {
+          intervals.push((times[i - 1] - times[i]) / 1000); // Convert to seconds
+        }
+        blockTime = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+      }
+    }
+    
+    // Calculate TPS (transactions per second)
+    const totalTxs = blocks.reduce((sum, block) => {
+      const txs = block.data?.txs || [];
+      return sum + txs.length;
+    }, 0);
+    const timeSpan = blocks.length > 1 && blockTime > 0 ? blockTime * blocks.length : 1;
+    const tps = timeSpan > 0 ? totalTxs / timeSpan : 0;
+    
+    // Get recent transactions to calculate gas averages
+    let totalGasUsed = 0;
+    let totalGasWanted = 0;
+    let txCount = 0;
+    
+    // Sample transactions from recent blocks
+    for (const block of blocks.slice(0, 5)) {
+      const txs = block.data?.txs || [];
+      for (const tx of txs.slice(0, 5)) {
+        try {
+          // Try to get transaction hash from base64
+          const txBytes = Buffer.from(tx, 'base64');
+          const txHash = txBytes.toString('hex').slice(0, 64);
+          
+          const response = await fetch(`${LUMERA_CONFIG.rest}/cosmos/tx/v1beta1/txs/${txHash}`);
+          if (response.ok) {
+            const data = await response.json();
+            const txResponse = data.tx_response;
+            if (txResponse) {
+              totalGasUsed += parseInt(txResponse.gas_used || "0");
+              totalGasWanted += parseInt(txResponse.gas_wanted || "0");
+              txCount++;
+            }
+          }
+        } catch (err) {
+          // Skip if can't fetch
+        }
+      }
+    }
+    
+    const avgGasUsed = txCount > 0 ? totalGasUsed / txCount : 0;
+    const avgGasWanted = txCount > 0 ? totalGasWanted / txCount : 0;
+    
+    // Get validator stats
+    let totalValidators = 0;
+    let activeValidators = 0;
+    try {
+      const validators = await getValidators();
+      totalValidators = validators.length;
+      activeValidators = validators.filter((v: any) => 
+        v.status === "BOND_STATUS_BONDED" || v.status === 2
+      ).length;
+    } catch (err) {
+      console.error("Error fetching validators:", err);
+    }
+    
+    // Determine network status
+    let networkStatus: "healthy" | "degraded" | "down" = "healthy";
+    if (blockTime > 10 || tps === 0) {
+      networkStatus = "degraded";
+    }
+    if (blocks.length === 0 || latestHeight === 0) {
+      networkStatus = "down";
+    }
+    
+    return {
+      latestHeight,
+      blockTime: Math.round(blockTime * 100) / 100,
+      tps: Math.round(tps * 100) / 100,
+      avgGasUsed: Math.round(avgGasUsed),
+      avgGasWanted: Math.round(avgGasWanted),
+      totalValidators,
+      activeValidators,
+      totalTransactions: totalTxs,
+      networkStatus,
+    };
+  } catch (error: any) {
+    console.error("Error fetching network stats:", error);
     throw error;
   }
 };

@@ -1,33 +1,33 @@
 import type { Metadata } from "next";
-import { Orbitron, Rubik, Inconsolata } from "next/font/google";
+import { Bebas_Neue, Manrope, Roboto_Mono } from "next/font/google";
 import "./globals.css";
 import { WalletProvider } from "@/contexts/WalletContext";
 
-const orbitron = Orbitron({
-  variable: "--font-orbitron",
+const bebasNeue = Bebas_Neue({
+  variable: "--font-bebas-neue",
   subsets: ["latin"],
   display: "swap",
-  weight: ["400", "500", "600", "700", "800", "900"],
+  weight: ["400"],
 });
 
-const rubik = Rubik({
-  variable: "--font-rubik",
+const manrope = Manrope({
+  variable: "--font-manrope",
   subsets: ["latin"],
   display: "swap",
   weight: ["400", "500", "600", "700", "800"],
 });
 
-const inconsolata = Inconsolata({
-  variable: "--font-inconsolata",
+const robotoMono = Roboto_Mono({
+  variable: "--font-roboto-mono",
   subsets: ["latin"],
   display: "swap",
-  weight: ["400", "500", "600", "700", "800"],
+  weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
-  title: "TxInspector - Transaction Inspector",
+  title: "LumeraStats - Network Stats Dashboard",
   description:
-    "Inspect transaction details on Lumera Testnet. Paste a transaction hash to view gas, logs, events, and decoded input data.",
+    "Real-time Lumera Testnet network statistics. View TPS, block time, gas averages, validator status, and more.",
 };
 
 export default function RootLayout({
@@ -38,7 +38,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${orbitron.variable} ${rubik.variable} ${inconsolata.variable} antialiased`}
+        className={`${bebasNeue.variable} ${manrope.variable} ${robotoMono.variable} antialiased`}
       >
         <WalletProvider>{children}</WalletProvider>
       </body>

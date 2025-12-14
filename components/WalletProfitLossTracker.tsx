@@ -82,7 +82,7 @@ export default function WalletProfitLossTracker() {
   const fetchCurrentBalances = async (address: string): Promise<Array<{ denom: string; amount: string }>> => {
     try {
       const balances = await getAllBalances(address);
-      return balances ? [...balances.map(b => ({ denom: b.denom, amount: b.amount }))] : [];
+      return balances.map((b) => ({ denom: b.denom, amount: b.amount }));
     } catch (error) {
       console.error(`Error fetching balances for ${address}:`, error);
       return [];
