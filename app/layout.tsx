@@ -1,33 +1,33 @@
 import type { Metadata } from "next";
-import { Bebas_Neue, Manrope, Roboto_Mono } from "next/font/google";
+import { Bebas_Neue, Manrope, Montserrat, Open_Sans, Roboto_Mono, Courier_Prime } from "next/font/google";
 import "./globals.css";
 import { WalletProvider } from "@/contexts/WalletContext";
 
-const bebasNeue = Bebas_Neue({
-  variable: "--font-bebas-neue",
+const montserrat = Montserrat({
+  variable: "--font-montserrat",
   subsets: ["latin"],
   display: "swap",
   weight: ["400"],
 });
 
-const manrope = Manrope({
-  variable: "--font-manrope",
+const openSans = Open_Sans({
+  variable: "--font-open-sans",
   subsets: ["latin"],
   display: "swap",
   weight: ["400", "500", "600", "700", "800"],
 });
 
-const robotoMono = Roboto_Mono({
-  variable: "--font-roboto-mono",
+const courierPrime = Courier_Prime({
+  variable: "--font-courier-prime",
   subsets: ["latin"],
   display: "swap",
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "700"],
 });
 
 export const metadata: Metadata = {
-  title: "LumeraStats - Network Stats Dashboard",
+  title: "GasWatch - Gas Fee Monitor",
   description:
-    "Real-time Lumera Testnet network statistics. View TPS, block time, gas averages, validator status, and more.",
+    "Real-time network statistics. View TPS, block time, gas averages, validator status, and more.",
 };
 
 export default function RootLayout({
@@ -38,7 +38,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${bebasNeue.variable} ${manrope.variable} ${robotoMono.variable} antialiased`}
+        className={`${montserrat.variable} ${openSans.variable} ${courierPrime.variable} antialiased`}
       >
         <WalletProvider>{children}</WalletProvider>
       </body>

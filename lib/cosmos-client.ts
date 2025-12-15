@@ -18,7 +18,7 @@ export const createQueryClient = async (timeout = 15000) => {
       if (!testResponse.ok) {
         console.warn(`RPC endpoint returned status ${testResponse.status}`);
       }
-    } catch (testError: any) {
+    } catch (testError: unknown) {
       console.warn("RPC endpoint test failed:", testError);
       // Continue anyway, as the test might fail due to CORS but the actual connection might work
     }
@@ -32,26 +32,26 @@ export const createQueryClient = async (timeout = 15000) => {
     const connectionPromise = StargateClient.connect(LUMERA_CONFIG.rpc);
     
     return await Promise.race([connectionPromise, timeoutPromise]) as Awaited<ReturnType<typeof StargateClient.connect>>;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Failed to connect to RPC:", error);
     console.error("Error details:", {
-      message: error.message,
-      name: error.name,
-      stack: error.stack,
-      cause: error.cause,
+      message: error instanceof Error ? error.message : "Unknown error",
+      name: error instanceof Error ? error.name : "Unknown error",
+      stack: error instanceof Error ? error.stack : undefined,
+      cause: error instanceof Error ? error.cause : undefined,
     });
     
     // Check if it's a timeout error
-    if (error.message?.includes("timeout") || error.message?.includes("Timeout") || error.name === "AbortError") {
+    if (error instanceof Error && (error.message?.includes("timeout") || error.message?.includes("Timeout") || error.name === "AbortError")) {
       throw new Error("Connection timeout: The Lumera Testnet RPC endpoint took too long to respond. The network may be experiencing issues or the endpoint may be down. Please try again later.");
     }
     
     // Check for network/fetch errors (most common in browsers)
-    if (error.message?.includes("fetch") || 
+    if (error instanceof Error && (error.message?.includes("fetch") || 
         error.message?.includes("network") || 
         error.message?.includes("Failed to fetch") ||
         error.name === "TypeError" ||
-        (error.message && typeof error.message === 'string' && error.message.toLowerCase().includes('network'))) {
+        (error.message && typeof error.message === 'string' && error.message.toLowerCase().includes('network')))) {
       
       const errorMsg = `Network error: Unable to connect to Lumera Testnet RPC endpoint (${LUMERA_CONFIG.rpc}). ` +
         `This could be due to:\n` +
@@ -64,12 +64,12 @@ export const createQueryClient = async (timeout = 15000) => {
     }
     
     // Check for CORS errors
-    if (error.message?.includes("CORS") || error.message?.includes("cors") || error.message?.includes("Access-Control")) {
+    if (error instanceof Error && (error.message?.includes("CORS") || error.message?.includes("cors") || error.message?.includes("Access-Control"))) {
       throw new Error("CORS error: The Lumera Testnet RPC endpoint does not allow browser connections due to CORS restrictions. Please contact the network administrators to enable CORS for browser-based applications.");
     }
     
     // Generic error with more context
-    const errorDetails = error.message || error.toString() || "Unknown error";
+    const errorDetails = error instanceof Error ? error.message : error instanceof Error ? error.toString() : "Unknown error";
     throw new Error(`Failed to connect to Lumera Testnet (${LUMERA_CONFIG.rpc}): ${errorDetails}`);
   }
 };
@@ -100,7 +100,7 @@ export const getBalance = async (address: string) => {
     
     // Find the stake currency balance
     const stakeBalance = balances.find(
-      (b: any) => b.denom === LUMERA_CONFIG.stakeCurrency.coinMinimalDenom
+      (b: { denom: string; amount: string }) => b.denom === LUMERA_CONFIG.stakeCurrency.coinMinimalDenom
     );
     
     if (stakeBalance) {
@@ -115,7 +115,7 @@ export const getBalance = async (address: string) => {
       denom: LUMERA_CONFIG.stakeCurrency.coinMinimalDenom,
       amount: "0",
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching balance:", error);
     // Return zero balance if there's an error (wallet might be new)
     return {
@@ -140,11 +140,11 @@ export const getAllBalances = async (address: string): Promise<Array<{ denom: st
     const balances = data.balances || [];
     
     // Convert to the expected format
-    return balances.map((b: any) => ({
+    return balances.map((b: { denom: string; amount: string }) => ({
       denom: b.denom,
       amount: b.amount,
     }));
-  } catch (error: any) {
+    } catch (error: unknown) {
     console.error("Error fetching all balances:", error);
     // Return empty array if there's an error
     return [];
@@ -239,9 +239,9 @@ export const getValidators = async () => {
     console.error("❌ No validators found from any endpoint");
     throw new Error("No validators found on Lumera network. The network may not have active validators yet, or the endpoints may be unavailable. Please try again later.");
     
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("❌ Error fetching validators:", error);
-    if (error.message.includes("No validators found")) {
+  if (error instanceof Error && error.message.includes("No validators found")) {
       throw error;
     }
     throw new Error("Failed to connect to Lumera network. Please check your internet connection and try again.");
@@ -360,9 +360,9 @@ export const getTransactionHistory = async (address: string): Promise<Transactio
         const response = await fetch(url, { signal: controller.signal });
         clearTimeout(timeoutId);
         return response;
-      } catch (error: any) {
+      } catch (error: unknown) {
         clearTimeout(timeoutId);
-        if (error.name === 'AbortError') {
+        if (error instanceof Error && error.message.includes('AbortError')) {
           throw new Error("Request timeout: Network request took too long");
         }
         throw error;
@@ -386,7 +386,7 @@ export const getTransactionHistory = async (address: string): Promise<Transactio
       try {
         const sentData = await sentResponse.value.json();
         if (sentData.txs && sentData.txs.length > 0) {
-          const parsedSent = sentData.txs.map((tx: any) => parseTransaction(tx, address));
+          const parsedSent = sentData.txs.map((tx: TransactionDetail) => parseTransaction(tx, address));
           transactions.push(...parsedSent);
         }
       } catch (parseError) {
@@ -399,7 +399,7 @@ export const getTransactionHistory = async (address: string): Promise<Transactio
       try {
         const receivedData = await receivedResponse.value.json();
         if (receivedData.txs && receivedData.txs.length > 0) {
-          const parsedReceived = receivedData.txs.map((tx: any) => parseTransaction(tx, address));
+          const parsedReceived = receivedData.txs.map((tx: TransactionDetail) => parseTransaction(tx, address));
           transactions.push(...parsedReceived);
         }
       } catch (parseError) {
@@ -413,28 +413,16 @@ export const getTransactionHistory = async (address: string): Promise<Transactio
     );
     
     return uniqueTransactions.sort((a, b) => parseInt(b.height) - parseInt(a.height));
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching transaction history:", error);
     // Return empty array on error (wallet might be new or network issue)
     return [];
   }
 };
 
-const parseTransaction = (tx: any, userAddress: string): TransactionDetail => {
-  const txResponse = tx.tx_response || tx;
-  const messages = tx.tx?.body?.messages || tx.body?.messages || [];
-  const firstMessage = messages[0] || {};
-  
-  // Extract transaction type
-  const msgType = firstMessage["@type"] || "";
-  let type = msgType.split(".").pop() || "Unknown";
-  
-  // Simplify common types
-  if (type === "MsgSend") type = "Send";
-  if (type === "MsgDelegate") type = "Delegate";
-  if (type === "MsgUndelegate") type = "Undelegate";
-  if (type === "MsgWithdrawDelegatorReward") type = "Claim Rewards";
-  if (type === "MsgBeginRedelegate") type = "Redelegate";
+const parseTransaction = (tx: TransactionDetail, userAddress: string): TransactionDetail => {
+  const txResponse = tx.rawLog || tx;
+  const msgType = tx.type;
   
   // Extract amount and addresses based on message type
   let amount: string | undefined;
@@ -444,30 +432,25 @@ const parseTransaction = (tx: any, userAddress: string): TransactionDetail => {
   let validatorAddress: string | undefined;
   
   if (msgType.includes("MsgSend")) {
-    from = firstMessage.from_address;
-    to = firstMessage.to_address;
-    if (firstMessage.amount && firstMessage.amount.length > 0) {
-      const coin = firstMessage.amount[0];
-      amount = formatTokenAmount(coin.amount, 6);
-      denom = coin.denom;
-    }
+    from = tx.from;
+    to = tx.to;
+    amount = formatTokenAmount(tx.amount || "0", 6);
+    denom = tx.denom;
   } else if (msgType.includes("MsgDelegate") || msgType.includes("MsgUndelegate")) {
-    from = firstMessage.delegator_address;
-    validatorAddress = firstMessage.validator_address;
-    if (firstMessage.amount) {
-      amount = formatTokenAmount(firstMessage.amount.amount, 6);
-      denom = firstMessage.amount.denom;
-    }
+    from = tx.from;
+    validatorAddress = tx.validatorAddress;
+    amount = formatTokenAmount(tx.amount || "0", 6);
+    denom = tx.denom;
   } else if (msgType.includes("MsgWithdrawDelegatorReward")) {
-    from = firstMessage.delegator_address;
-    validatorAddress = firstMessage.validator_address;
+    from = tx.from;
+    validatorAddress = tx.validatorAddress;
     // Try to extract reward amount from logs
     try {
-      const logs = JSON.parse(txResponse.raw_log || "[]");
+      const logs = JSON.parse(tx.rawLog || "[]");
       if (logs[0]?.events) {
-        const withdrawEvent = logs[0].events.find((e: any) => e.type === "withdraw_rewards");
+        const withdrawEvent = logs[0].events.find((e: { type: string }) => e.type === "withdraw_rewards");
         if (withdrawEvent) {
-          const amountAttr = withdrawEvent.attributes.find((a: any) => a.key === "amount");
+          const amountAttr = withdrawEvent.attributes.find((a: { key: string }) => a.key === "amount");
           if (amountAttr && amountAttr.value) {
             const match = amountAttr.value.match(/(\d+)(\w+)/);
             if (match) {
@@ -477,27 +460,27 @@ const parseTransaction = (tx: any, userAddress: string): TransactionDetail => {
           }
         }
       }
-    } catch (e) {
-      console.error("Error parsing reward amount:", e);
+    } catch (e: unknown) {
+      console.error("Error parsing reward amount:", e instanceof Error ? e.message : "Unknown error");
     }
   }
   
   // Determine status
   let status: "success" | "pending" | "failed" = "success";
-  if (txResponse.code && txResponse.code !== 0) {
-    status = "failed";
+  if (tx.status && tx.status !== "success") {
+    status = tx.status;
   }
   
   // Parse timestamp
   let timestamp = new Date().toLocaleString();
-  if (txResponse.timestamp) {
-    timestamp = new Date(txResponse.timestamp).toLocaleString();
+  if (tx.timestamp) {
+    timestamp = new Date(tx.timestamp).toLocaleString();
   }
   
   return {
-    hash: txResponse.txhash || tx.hash || "unknown",
-    height: txResponse.height?.toString() || "0",
-    type,
+    hash: tx.hash || "unknown",
+    height: tx.height?.toString() || "0",
+    type: tx.type,
     timestamp,
     amount,
     denom,
@@ -505,8 +488,8 @@ const parseTransaction = (tx: any, userAddress: string): TransactionDetail => {
     to,
     validatorAddress,
     status,
-    rawLog: txResponse.raw_log,
-    memo: tx.tx?.body?.memo || tx.body?.memo,
+    rawLog: tx.rawLog,
+    memo: tx.memo,
   };
 };
 
@@ -543,13 +526,13 @@ export const getLatestBlocks = async (limit: number = 20): Promise<BlockInfo[]> 
     const batchSize = 5;
     
     for (let height = latestHeight; height >= startHeight && height > 0; height -= batchSize) {
-      const batch = [];
+      const batch: number[] = [];
       for (let i = 0; i < batchSize && (height - i) >= startHeight; i++) {
         batch.push(height - i);
       }
       
       const batchPromise = Promise.all(
-        batch.map(async (h) => {
+        batch.map(async (h: number) => {
           try {
             const response = await fetch(`${LUMERA_CONFIG.rest}/cosmos/base/tendermint/v1beta1/blocks/${h}`);
             if (response.ok) {
@@ -593,7 +576,7 @@ export const getLatestBlocks = async (limit: number = 20): Promise<BlockInfo[]> 
         })
       );
       
-      fetchPromises.push(batchPromise as Promise<void>);
+      fetchPromises.push(batchPromise as unknown as Promise<void>);
     }
     
     await Promise.all(fetchPromises);
@@ -602,7 +585,7 @@ export const getLatestBlocks = async (limit: number = 20): Promise<BlockInfo[]> 
     blocks.sort((a, b) => parseInt(b.height) - parseInt(a.height));
     
     return blocks;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching latest blocks:", error);
     return [];
   }
@@ -622,7 +605,7 @@ export const getBlockByHeight = async (height: number): Promise<BlockInfo | null
     
     const data = await response.json();
     const block = data.block;
-    const txs = block.data?.txs || [];
+    const txs = block?.txs || [];
     
     return {
       height: block.header.height || height.toString(),
@@ -653,7 +636,7 @@ export const getBlockByHeight = async (height: number): Promise<BlockInfo | null
         }
       }),
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`Error fetching block ${height}:`, error);
     return null;
   }
@@ -670,7 +653,7 @@ export const getLatestBlockHeight = async (): Promise<number> => {
     
     const data = await response.json();
     return parseInt(data.block.header.height || "0");
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching latest block height:", error);
     return 0;
   }
@@ -685,9 +668,9 @@ export interface TransactionDetails {
   gasWanted: string;
   timestamp: string;
   rawLog: string;
-  logs: any[];
-  events: any[];
-  messages: any[];
+    logs: { events: { type: string; attributes: { key: string; value: string }[] }[] }[];
+  events: { type: string; attributes: { key: string; value: string }[] }[];
+  messages: { messages: { from_address: string; to_address: string; amount: { amount: string; denom: string }[] }[] }[];
   memo?: string;
   fee?: {
     amount: string;
@@ -707,14 +690,14 @@ export const getTransactionByHash = async (txHash: string): Promise<TransactionD
     }
 
     const data = await response.json();
-    const txResponse = data.tx_response || data;
+    const txResponse = data.rawLog;
     
     if (!txResponse) {
       throw new Error("Invalid transaction response");
     }
 
     // Parse logs
-    let logs: any[] = [];
+    let logs: { events: { type: string; attributes: { key: string; value: string }[] }[] }[] = [];
     try {
       logs = JSON.parse(txResponse.raw_log || "[]");
     } catch {
@@ -722,9 +705,9 @@ export const getTransactionByHash = async (txHash: string): Promise<TransactionD
     }
 
     // Extract events from logs
-    const events: any[] = [];
+    const events: { type: string; attributes: { key: string; value: string }[] }[] = [];
     if (Array.isArray(logs)) {
-      logs.forEach((log: any) => {
+      logs.forEach((log: { events: { type: string; attributes: { key: string; value: string }[] }[] }) => {
         if (log.events && Array.isArray(log.events)) {
           events.push(...log.events);
         }
@@ -759,7 +742,7 @@ export const getTransactionByHash = async (txHash: string): Promise<TransactionD
       memo: txResponse.tx?.body?.memo || data.tx?.body?.memo,
       fee,
     };
-  } catch (error: any) {
+    } catch (error: unknown) {
     console.error("Error fetching transaction:", error);
     throw error;
   }
@@ -791,12 +774,12 @@ export const getNetworkStats = async (): Promise<NetworkStats> => {
     const blockCount = 10;
     const startHeight = Math.max(1, latestHeight - blockCount + 1);
     
-    const blockPromises: Promise<any>[] = [];
+    const blockPromises: Promise<BlockInfo | null>[] = [];
     for (let height = latestHeight; height >= startHeight && height > 0; height--) {
       blockPromises.push(
         fetch(`${LUMERA_CONFIG.rest}/cosmos/base/tendermint/v1beta1/blocks/${height}`)
-          .then(res => res.ok ? res.json() : null)
-          .then(data => data ? data.block : null)
+          .then(res => res.ok ? res.json() as Promise<BlockInfo> : null)
+          .then(data => data ? data : null)
           .catch(() => null)
       );
     }
@@ -808,7 +791,7 @@ export const getNetworkStats = async (): Promise<NetworkStats> => {
     let blockTime = 0;
     if (blocks.length > 1) {
       const times = blocks
-        .map(b => b.header?.time ? new Date(b.header.time).getTime() : 0)
+        .map(b => b?.time ? new Date(b.time).getTime() : 0)
         .filter(t => t > 0)
         .sort((a, b) => b - a); // Sort descending
       
@@ -823,7 +806,7 @@ export const getNetworkStats = async (): Promise<NetworkStats> => {
     
     // Calculate TPS (transactions per second)
     const totalTxs = blocks.reduce((sum, block) => {
-      const txs = block.data?.txs || [];
+      const txs = block?.transactions || [];
       return sum + txs.length;
     }, 0);
     const timeSpan = blocks.length > 1 && blockTime > 0 ? blockTime * blocks.length : 1;
@@ -836,20 +819,20 @@ export const getNetworkStats = async (): Promise<NetworkStats> => {
     
     // Sample transactions from recent blocks
     for (const block of blocks.slice(0, 5)) {
-      const txs = block.data?.txs || [];
+      const txs = block?.transactions || [];
       for (const tx of txs.slice(0, 5)) {
         try {
           // Try to get transaction hash from base64
-          const txBytes = Buffer.from(tx, 'base64');
+          const txBytes = Buffer.from(tx.hash, 'base64');
           const txHash = txBytes.toString('hex').slice(0, 64);
           
           const response = await fetch(`${LUMERA_CONFIG.rest}/cosmos/tx/v1beta1/txs/${txHash}`);
           if (response.ok) {
             const data = await response.json();
-            const txResponse = data.tx_response;
+            const txResponse = data.rawLog;
             if (txResponse) {
-              totalGasUsed += parseInt(txResponse.gas_used || "0");
-              totalGasWanted += parseInt(txResponse.gas_wanted || "0");
+              totalGasUsed += parseInt(txResponse.gasUsed || "0");
+              totalGasWanted += parseInt(txResponse.gasWanted || "0");
               txCount++;
             }
           }
@@ -868,10 +851,10 @@ export const getNetworkStats = async (): Promise<NetworkStats> => {
     try {
       const validators = await getValidators();
       totalValidators = validators.length;
-      activeValidators = validators.filter((v: any) => 
-        v.status === "BOND_STATUS_BONDED" || v.status === 2
+      activeValidators = validators.filter((v: { status: string; }) => 
+        v.status === "BOND_STATUS_BONDED" || v.status === "2"
       ).length;
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Error fetching validators:", err);
     }
     
@@ -895,9 +878,186 @@ export const getNetworkStats = async (): Promise<NetworkStats> => {
       totalTransactions: totalTxs,
       networkStatus,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching network stats:", error);
     throw error;
+  }
+};
+
+export interface GasPriceData {
+  timestamp: string;
+  gasPrice: number; // in ulume per gas unit
+  gasUsed: number;
+  gasWanted: number;
+}
+
+export interface GasFeeStats {
+  current: {
+    low: number;
+    average: number;
+    high: number;
+  };
+  history24h: GasPriceData[];
+  min24h: number;
+  max24h: number;
+  avg24h: number;
+}
+
+export const getGasFeeStats = async (): Promise<GasFeeStats> => {
+  try {
+    // Get recent transactions to calculate gas prices
+    const history24h: GasPriceData[] = [];
+    
+    // Try to get historical data from localStorage first (browser only)
+    if (typeof window !== 'undefined') {
+      const storedHistory = localStorage.getItem("gas_fee_history_24h");
+      if (storedHistory) {
+        try {
+          const parsed = JSON.parse(storedHistory);
+          // Filter to last 24 hours
+          const now = Date.now();
+          const oneDayAgo = now - 24 * 60 * 60 * 1000;
+          const filtered = parsed.filter((item: GasPriceData) => {
+            const itemTime = new Date(item.timestamp).getTime();
+            return itemTime >= oneDayAgo;
+          });
+          history24h.push(...filtered);
+        } catch (e: unknown) {
+          console.error("Error parsing stored gas history:", e);
+        }
+      }
+    }
+    
+    // Get latest block to fetch recent transactions
+    const latestHeight = await getLatestBlockHeight();
+    if (latestHeight > 0) {
+      // Get recent blocks (last 20 blocks)
+      const blockCount = Math.min(20, latestHeight);
+      const startHeight = Math.max(1, latestHeight - blockCount + 1);
+      
+      const gasPrices: number[] = [];
+      
+      // Fetch blocks in batches
+      for (let height = latestHeight; height >= startHeight && height > 0; height -= 5) {
+        const batch: number[] = [];
+        for (let i = 0; i < 5 && (height - i) >= startHeight; i++) {
+          batch.push(height - i);
+        }
+        
+        await Promise.all(
+          batch.map(async (h) => {
+            try {
+              const response = await fetch(`${LUMERA_CONFIG.rest}/cosmos/base/tendermint/v1beta1/blocks/${h}`);
+              if (response.ok) {
+                const data = await response.json();
+                const block = data.block;
+                const txs = block.data?.txs || [];
+                
+                // Sample transactions from this block
+                for (const tx of txs.slice(0, 3)) {
+                  try {
+                    const txBytes = Buffer.from(tx, 'base64');
+                    const txHash = txBytes.toString('hex').slice(0, 64);
+                    
+                    const txResponse = await fetch(`${LUMERA_CONFIG.rest}/cosmos/tx/v1beta1/txs/${txHash}`);
+                    if (txResponse.ok) {
+                      const txData = await txResponse.json();
+                      const txResp = txData.tx_response;
+                      
+                      if (txResp && txResp.gas_used && txResp.gas_wanted) {
+                        const gasUsed = parseInt(txResp.gas_used || "0");
+                        const gasWanted = parseInt(txResp.gas_wanted || "0");
+                        
+                        // Calculate gas price from fee
+                        if (txData.tx?.auth_info?.fee?.amount?.[0]) {
+                          const feeAmount = txData.tx.auth_info.fee.amount[0];
+                          const feeValue = parseFloat(feeAmount.amount || "0");
+                          const gasPrice = gasUsed > 0 ? feeValue / gasUsed : 0;
+                          
+                          if (gasPrice > 0) {
+                            gasPrices.push(gasPrice);
+                            
+                            // Add to history
+                            history24h.push({
+                              timestamp: txResp.timestamp || block.header.time || new Date().toISOString(),
+                              gasPrice,
+                              gasUsed,
+                              gasWanted,
+                            });
+                          }
+                        }
+                      }
+                    }
+                  } catch (err) {
+                    // Skip if can't fetch
+                  }
+                }
+              }
+            } catch (err) {
+              // Skip if can't fetch
+            }
+          })
+        );
+      }
+      
+      // Sort history by timestamp
+      history24h.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      
+      // Store updated history (browser only)
+      if (typeof window !== 'undefined' && history24h.length > 0) {
+        localStorage.setItem("gas_fee_history_24h", JSON.stringify(history24h));
+      }
+    }
+    
+    // Calculate current gas prices (low, average, high)
+    const recentPrices = history24h.slice(-50).map(h => h.gasPrice).filter(p => p > 0);
+    let low = 0;
+    let average = 0;
+    let high = 0;
+    
+    if (recentPrices.length > 0) {
+      const sorted = [...recentPrices].sort((a, b) => a - b);
+      low = sorted[0];
+      high = sorted[sorted.length - 1];
+      average = recentPrices.reduce((a, b) => a + b, 0) / recentPrices.length;
+    } else {
+      // Fallback to config values
+      low = 0.01;
+      average = 0.025;
+      high = 0.04;
+    }
+    
+    // Calculate 24h stats
+    const prices24h = history24h.map(h => h.gasPrice).filter(p => p > 0);
+    const min24h = prices24h.length > 0 ? Math.min(...prices24h) : low;
+    const max24h = prices24h.length > 0 ? Math.max(...prices24h) : high;
+    const avg24h = prices24h.length > 0 ? prices24h.reduce((a, b) => a + b, 0) / prices24h.length : average;
+    
+    return {
+      current: {
+        low: Math.round(low * 1000000) / 1000000,
+        average: Math.round(average * 1000000) / 1000000,
+        high: Math.round(high * 1000000) / 1000000,
+      },
+      history24h: history24h.slice(-100), // Keep last 100 data points
+      min24h: Math.round(min24h * 1000000) / 1000000,
+      max24h: Math.round(max24h * 1000000) / 1000000,
+      avg24h: Math.round(avg24h * 1000000) / 1000000,
+    };
+  } catch (error: unknown) {
+    console.error("Error fetching gas fee stats:", error);
+    // Return default values
+    return {
+      current: {
+        low: 0.01,
+        average: 0.025,
+        high: 0.04,
+      },
+      history24h: [],
+      min24h: 0.01,
+      max24h: 0.04,
+      avg24h: 0.025,
+    };
   }
 };
 
